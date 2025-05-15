@@ -8,6 +8,8 @@ from google.auth import default
 import logging
 import sys
 
+
+#atualizando
 # Configure logging (remove the duplicate logging configuration)
 logging.basicConfig(
     level=logging.INFO,
