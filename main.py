@@ -10,6 +10,8 @@ import sys
 
 
 #atualizando
+
+#teste do git add 
 # Configure logging (remove the duplicate logging configuration)
 logging.basicConfig(
     level=logging.INFO,
@@ -20,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
+print("teste do add no git")
 
 # Initialize FastAPI app
 app = FastAPI()
