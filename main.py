@@ -1,18 +1,14 @@
-from fastapi import FastAPI, Request, Response
-from twilio.twiml.messaging_response import MessagingResponse
-from google.cloud import dialogflowcx_v3
-from google.cloud.dialogflowcx_v3.types import TextInput, QueryInput
+# main.py
+
+from fastapi import FastAPI, Request
 import os
 from dotenv import load_dotenv
-from google.auth import default
 import logging
 import sys
+from dialogflow_handler import DialogflowHandler
+from twilio_handler import TwilioHandler
 
-
-#atualizando
-
-#teste do git add 
-# Configure logging (remove the duplicate logging configuration)
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -22,25 +18,17 @@ logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
-print("teste do add no git")
 
 # Initialize FastAPI app
 app = FastAPI()
 
-# Dialogflow CX configuration
-DIALOGFLOW_PROJECT_ID = os.getenv("DIALOGFLOW_PROJECT_ID")
-DIALOGFLOW_LOCATION = os.getenv("DIALOGFLOW_LOCATION", "global")
-DIALOGFLOW_AGENT_ID = os.getenv("DIALOGFLOW_AGENT_ID")
-
-# Initialize Google Cloud credentials globally
-try:
-    credentials, project = default()
-    session_client = dialogflowcx_v3.SessionsClient(credentials=credentials)
-    logger.info(f"Successfully initialized credentials for service account: {credentials.service_account_email}")
-except Exception as e:
-    logger.error(f"Error initializing credentials: {e}")
-    credentials = None
-    session_client = None
+# Initialize handlers
+dialogflow_handler = DialogflowHandler(
+    project_id=os.getenv("DIALOGFLOW_PROJECT_ID"),
+    location=os.getenv("DIALOGFLOW_LOCATION", "global"),
+    agent_id=os.getenv("DIALOGFLOW_AGENT_ID")
+)
+twilio_handler = TwilioHandler()
 
 @app.get("/")
 async def root():
@@ -49,34 +37,7 @@ async def root():
 @app.get("/test-dialogflow")
 async def test_dialogflow():
     try:
-        # Create a test session ID
-        session_id = "test-session-123"
-
-        # Create session path
-        agent_path = f"projects/{DIALOGFLOW_PROJECT_ID}/locations/{DIALOGFLOW_LOCATION}/agents/{DIALOGFLOW_AGENT_ID}"
-        session_path = f"{agent_path}/sessions/{session_id}"
-
-        # Create text input
-        text_input = TextInput(text="Hello")
-        query_input = QueryInput(text=text_input, language_code="en-US")
-
-        # Send request to Dialogflow
-        logger.info("Sending test request to Dialogflow...")
-        logger.info(f"Using session path: {session_path}")
-
-        response = session_client.detect_intent(
-            request={"session": session_path, "query_input": query_input}
-        )
-
-        # Log the full response
-        logger.info(f"Full Dialogflow response: {response}")
-
-        if response.query_result.response_messages:
-            reply = response.query_result.response_messages[0].text.text[0]
-            return {"status": "success", "reply": reply}
-        else:
-            return {"status": "no_response", "raw_response": str(response)}
-
+        return await dialogflow_handler.test_connection()
     except Exception as e:
         logger.error(f"Error testing Dialogflow: {str(e)}")
         return {"status": "error", "message": str(e)}
@@ -84,76 +45,39 @@ async def test_dialogflow():
 @app.post("/webhook")
 async def webhook(request: Request):
     try:
-        # Get the incoming message data from Twilio
+        # Get form data from request
         form_data = await request.form()
-        incoming_msg = form_data.get('Body', '').strip()
-        sender_id = form_data.get('From', '')
 
-        logger.info(f"Received message: '{incoming_msg}' from {sender_id}")
-        logger.info(f"Project ID: {DIALOGFLOW_PROJECT_ID}")
-        logger.info(f"Location: {DIALOGFLOW_LOCATION}")
-        logger.info(f"Agent ID: {DIALOGFLOW_AGENT_ID}")
+        # Process incoming message using Twilio handler
+        message, sender_id = await twilio_handler.process_incoming_message(form_data)
 
-        # Create session path using alternative approach
-        agent_path = f"projects/{DIALOGFLOW_PROJECT_ID}/locations/{DIALOGFLOW_LOCATION}/agents/{DIALOGFLOW_AGENT_ID}"
-        session_path = f"{agent_path}/sessions/{sender_id}"
+        # Get response from Dialogflow
+        dialogflow_response = await dialogflow_handler.detect_intent(
+            session_id=sender_id,
+            message=message
+        )
 
-        logger.info(f"Using session path: {session_path}")
-
-        # Create text input
-        text_input = TextInput(text=incoming_msg)
-        query_input = QueryInput(text=text_input, language_code="en-US")
-
-        try:
-            # Send request to Dialogflow
-            logger.info("Sending request to Dialogflow...")
-            response = session_client.detect_intent(
-                request={"session": session_path, "query_input": query_input}
-            )
-            logger.info(f"Dialogflow raw response: {response}")
-
-            # Create Twilio response
-            twilio_response = MessagingResponse()
-
-            if response.query_result.response_messages:
-                reply = response.query_result.response_messages[0].text.text[0]
-                logger.info(f"Got response from Dialogflow: {reply}")
-            else:
-                reply = "Sorry, I couldn't process your request at this time."
-                logger.warning("No response messages from Dialogflow")
-
-            twilio_response.message(reply)
-            return Response(content=str(twilio_response), media_type="application/xml")
-
-        except Exception as dialog_error:
-            logger.error(f"Dialogflow error: {str(dialog_error)}")
-            # Fall back to echo response for debugging
-            twilio_response = MessagingResponse()
-            twilio_response.message(f"Echo (Dialogflow error): {incoming_msg}")
-            return Response(content=str(twilio_response), media_type="application/xml")
+        # Create and return Twilio response
+        return twilio_handler.create_response(dialogflow_response)
 
     except Exception as e:
         logger.error(f"Webhook processing error: {str(e)}")
-        twilio_response = MessagingResponse()
-        twilio_response.message(f"Error processing request: {str(e)}")
-        return Response(content=str(twilio_response), media_type="application/xml")
+        return twilio_handler.create_response(f"Error processing request: {str(e)}")
 
 @app.on_event("startup")
 async def startup_event():
+    """Print startup configuration"""
     print("="*50)
     print("STARTUP CONFIGURATION")
     print("="*50)
-    print(f"Project ID: {DIALOGFLOW_PROJECT_ID}")
-    print(f"Location: {DIALOGFLOW_LOCATION}")
-    print(f"Agent ID: {DIALOGFLOW_AGENT_ID}")
-    if credentials:
-        print(f"Service Account: {credentials.service_account_email}")
-    else:
-        print("WARNING: No credentials loaded!")
+    print(f"Project ID: {os.getenv('DIALOGFLOW_PROJECT_ID')}")
+    print(f"Location: {os.getenv('DIALOGFLOW_LOCATION')}")
+    print(f"Agent ID: {os.getenv('DIALOGFLOW_AGENT_ID')}")
     print("="*50)
 
     # Verify environment variables
-    if not all([DIALOGFLOW_PROJECT_ID, DIALOGFLOW_AGENT_ID]):
+    required_vars = ['DIALOGFLOW_PROJECT_ID', 'DIALOGFLOW_AGENT_ID']
+    if not all(os.getenv(var) for var in required_vars):
         logger.error("Missing required environment variables!")
-        for var in ['DIALOGFLOW_PROJECT_ID', 'DIALOGFLOW_LOCATION', 'DIALOGFLOW_AGENT_ID']:
+        for var in required_vars:
             logger.info(f"{var}: {os.getenv(var)}")
