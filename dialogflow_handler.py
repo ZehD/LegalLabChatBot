@@ -6,6 +6,9 @@ from google.auth import default
 import logging
 import os
 
+
+
+# separating dialogflow_handler.py from main.py
 class DialogflowHandler:
     def __init__(self, project_id: str, location: str, agent_id: str):
         self.project_id = project_id
