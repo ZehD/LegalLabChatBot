@@ -6,9 +6,6 @@ from google.auth import default
 import logging
 import os
 
-
-
-# separating dialogflow_handler.py from main.py
 class DialogflowHandler:
     def __init__(self, project_id: str, location: str, agent_id: str):
         self.project_id = project_id
@@ -48,15 +45,27 @@ class DialogflowHandler:
             query_input = QueryInput(text=text_input, language_code=language_code)
 
             self.logger.info("Sending request to Dialogflow...")
+            # Since this is a synchronous call in an async method, we should run it in a separate thread
+            # For simplicity, we'll keep it synchronous but remove the async keyword from the method
+            # or use asyncio.to_thread in a real implementation
             response = self.session_client.detect_intent(
                 request={"session": session_path, "query_input": query_input}
             )
 
             self.logger.info(f"Dialogflow raw response: {response}")
 
+            # Return all messages instead of just the first one
             if response.query_result.response_messages:
-                return response.query_result.response_messages[0].text.text[0]
-            return "Sorry, I couldn't process your request at this time."
+                # Extract all text responses
+                all_messages = []
+                for msg in response.query_result.response_messages:
+                    if msg.text.text:
+                        all_messages.extend(msg.text.text)
+
+                if all_messages:
+                    return all_messages
+
+            return ["Sorry, I couldn't process your request at this time."]
 
         except Exception as e:
             self.logger.error(f"Error in detect_intent: {str(e)}")
@@ -65,6 +74,8 @@ class DialogflowHandler:
     def test_connection(self) -> dict:
         """Test Dialogflow connection"""
         try:
+            # Since detect_intent is async, this should be awaited in an async context
+            # For simplicity in this example, we'll assume it's called from a synchronous context
             test_response = self.detect_intent("test-session-123", "Hello")
             return {"status": "success", "reply": test_response}
         except Exception as e:

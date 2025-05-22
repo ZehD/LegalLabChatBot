@@ -1,5 +1,3 @@
-# main.py
-
 from fastapi import FastAPI, Request
 import os
 from dotenv import load_dotenv
@@ -51,14 +49,20 @@ async def webhook(request: Request):
         # Process incoming message using Twilio handler
         message, sender_id = await twilio_handler.process_incoming_message(form_data)
 
-        # Get response from Dialogflow
+        # Get response from Dialogflow (usually a list of messages)
         dialogflow_response = await dialogflow_handler.detect_intent(
             session_id=sender_id,
             message=message
         )
 
+        # Join list of messages into a single string if needed
+        if isinstance(dialogflow_response, list):
+            response_text = "\n".join(dialogflow_response)
+        else:
+            response_text = str(dialogflow_response)
+
         # Create and return Twilio response
-        return twilio_handler.create_response(dialogflow_response)
+        return twilio_handler.create_response(response_text)
 
     except Exception as e:
         logger.error(f"Webhook processing error: {str(e)}")
