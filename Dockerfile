@@ -11,7 +11,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the application files
-COPY main.py dialogflow_handler.py twilio_handler.py .env ./
+COPY main.py dialogflow_handler.py twilio_handler.py ./
 
 # Create directory for credentials
 RUN mkdir -p /app/credentials
