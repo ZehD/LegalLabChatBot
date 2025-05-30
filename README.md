@@ -1,4 +1,4 @@
-# 🤖 Legal Chatbot for Social Assistance v2.0
+# 🤖 Legal Chatbot for Social Assistance v2.1
 
 This is a hybrid legal chatbot designed to assist individuals in vulnerable situations by providing access to legal information and guidance. It combines rule-based logic with AI-powered responses using LLMs.
 
